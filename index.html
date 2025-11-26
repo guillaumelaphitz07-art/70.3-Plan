@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1e293b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ironman 70.3">
+    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="manifest" href="manifest.json">
+    <title>Ironman 70.3 Tracker</title>
+    
+    <style>
+        /* --- CSS DE BASE --- */
+        :root {
+            --bg-body: #0f172a;
+            --bg-panel: #1e293b;
+            --bg-card: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #475569;
+            --c-bike: #4ade80;
+            --c-bike-dim: rgba(74, 222, 128, 0.2);
+            --c-run: #fb7185;
+            --c-run-dim: rgba(251, 113, 133, 0.2);
+            --c-swim: #60a5fa;
+            --c-brick: #c084fc;
+            --c-gym: #facc15;
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: var(--bg-body); /* Couleur de fond forcée */
+            color: var(--text-main); 
+            margin: 0; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Message de chargement / erreur */
+        #loading-screen {
+            position: fixed; top:0; left:0; width:100%; height:100%;
+            background: var(--bg-body); z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; font-family: monospace; padding: 20px; text-align: center;
+        }
+
+        /* LAYOUT */
+        .app-header {
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            padding: 15px;
+            padding-top: max(15px, env(safe-area-inset-top));
+            flex-shrink: 0; z-index: 10;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .brand { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .brand h1 { font-size: 1.1rem; margin: 0; color: white; display: flex; align-items: center; gap: 8px; }
+        .brand-subtitle { font-size: 0.75rem; color: var(--text-muted); }
+
+        .kpi-group { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+        .kpi-card { background: var(--bg-card); padding: 8px 4px; border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+        .kpi-val { font-size: 1rem; font-weight: 700; color: white; }
+        .kpi-lbl { font-size: 0.55rem; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; }
+
+        .charts-container { display: flex; gap: 10px; height: 80px; }
+        .chart-mini { flex: 1; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; position: relative; display: flex; flex-direction: column; }
+        .chart-mini-header { font-size: 0.6rem; padding: 4px; color: var(--text-muted); display: flex; justify-content: space-between; }
+        .chart-svg-wrap { flex-grow: 1; width: 100%; position: relative; }
+
+        .main-content { 
+            flex-grow: 1; overflow-y: auto; padding: 15px; 
+            padding-bottom: calc(20px + var(--safe-bottom));
+            -webkit-overflow-scrolling: touch; 
+        }
+
+        .week-card { margin-bottom: 25px; }
+        .week-header { 
+            position: sticky; top: 0; background: var(--bg-body); z-index: 5;
+            padding: 5px 0; display: flex; align-items: center; justify-content: space-between; 
+            border-bottom: 1px solid var(--border); margin-bottom: 10px;
+        }
+        .week-title { font-size: 1rem; font-weight: 700; color: white; }
+        .week-tag { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: var(--bg-card); color: var(--text-muted); border: 1px solid var(--border); }
+        
+        .days-list { display: flex; flex-direction: column; gap: 10px; }
+        .day-card {
+            background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+            display: grid; grid-template-columns: 1fr auto; gap: 10px; position: relative;
+        }
+        .day-card.done { border-color: var(--c-bike); background: rgba(74, 222, 128, 0.08); }
+        
+        .day-info { display: flex; flex-direction: column; }
+        .day-date { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; }
+        .session-badges { display: flex; gap: 5px; margin-bottom: 6px; flex-wrap: wrap; }
+        .session-type { font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+        
+        .type-bike { color: var(--c-bike); background: rgba(74, 222, 128, 0.15); }
+        .type-run { color: var(--c-run); background: rgba(251, 113, 133, 0.15); }
+        .type-brick { color: var(--c-brick); background: rgba(192, 132, 252, 0.15); }
+        .type-gym { color: var(--c-gym); background: rgba(250, 204, 21, 0.15); }
+        .type-race { background: #ef4444; color: white; grid-column: 1 / -1; text-align: center; font-size: 1.2rem; padding: 15px; }
+
+        .session-text { font-size: 0.85rem; color: #e2e8f0; line-height: 1.4; white-space: pre-wrap; }
+
+        .day-actions { display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; gap: 10px; min-width: 60px; }
+        
+        .check-circle { 
+            width: 32px; height: 32px; 
+            border: 2px solid var(--border); border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: transform 0.1s;
+        }
+        .check-circle:active { transform: scale(0.9); }
+        .day-card.done .check-circle { border-color: var(--c-bike); background: var(--c-bike); color: #0f172a; }
+
+        .real-inputs { display: none; flex-direction: column; gap: 6px; width: 100%; }
+        .day-card.done .real-inputs { display: flex; animation: fadeIn 0.3s; }
+        
+        .input-group { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 0.7rem; color: var(--text-muted); }
+        .input-group input { 
+            width: 45px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); 
+            color: white; padding: 4px; border-radius: 4px; text-align: center; font-size: 16px;
+        }
+
+        svg { width: 100%; height: 100%; overflow: visible; }
+        .area-plan { fill: rgba(255,255,255,0.05); stroke: rgba(255,255,255,0.3); stroke-width: 1; stroke-dasharray: 4; }
+        .area-real-bike { fill: var(--c-bike-dim); stroke: var(--c-bike); stroke-width: 2; }
+        .area-real-run { fill: var(--c-run-dim); stroke: var(--c-run); stroke-width: 2; }
+
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    </style>
+    
+    <script>
+        // Gestionnaire d'erreurs global pour le débogage
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            const el = document.getElementById('loading-screen');
+            if(el) {
+                el.innerHTML += `<br><span style="color:#ef4444">ERREUR : ${msg} (Ligne ${lineNo})</span>`;
+            }
+            return false;
+        };
+    </script>
+</head>
+<body>
+
+    <!-- Écran de chargement pour vérifier si le rendu plante -->
+    <div id="loading-screen">
+        Chargement de l'application...
+    </div>
+
+    <header class="app-header">
+        <div class="brand">
+            <h1>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                Ironman 70.3
+            </h1>
+            <span class="brand-subtitle">Plan vs Réel</span>
+        </div>
+
+        <div class="kpi-group">
+            <div class="kpi-card">
+                <div class="kpi-val" style="color:var(--c-bike)" id="kpi-bike-real">0</div>
+                <div class="kpi-lbl">Vélo (km)</div>
+            </div>
+            <div class="kpi-card" style="opacity:0.6">
+                <div class="kpi-val" id="kpi-bike-plan">0</div>
+                <div class="kpi-lbl">Obj. Vélo</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-val" style="color:var(--c-run)" id="kpi-run-real">0</div>
+                <div class="kpi-lbl">Run (km)</div>
+            </div>
+            <div class="kpi-card" style="opacity:0.6">
+                <div class="kpi-val" id="kpi-run-plan">0</div>
+                <div class="kpi-lbl">Obj. Run</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-mini">
+                <div class="chart-mini-header"><span>Vélo</span> <span style="color:var(--c-bike)">●</span></div>
+                <div class="chart-svg-wrap" id="chart-bike"></div>
+            </div>
+            <div class="chart-mini">
+                <div class="chart-mini-header"><span>Run</span> <span style="color:var(--c-run)">●</span></div>
+                <div class="chart-svg-wrap" id="chart-run"></div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div id="calendar-root"></div>
+        <div style="height: 50px;"></div>
+    </main>
+
+<script>
+// --- SERVICE WORKER REGISTRATION ---
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('SW enregistré'))
+            .catch(err => console.log('SW échec', err));
+    });
+}
+
+// --- DATA ---
+const RACE_DATE = new Date('2026-06-28');
+const SPEEDS = { bike: 27, run: 10 }; 
+const rawPlan = [
+    { w: 1, mon: "Bike 40 min moderate w/ 4 x 30-sec sprints", tue: "Run 6.4 km moderate + 2 x 10-sec sprint", wed: "Bike 40 min moderate", thu: "Run 6.4 km moderate", fri: "GYM", sat: "Bike 32.2 km moderate", sun: "Run 9.7 km moderate | Swim 800 m moderate" },
+    { w: 2, mon: "Bike 40 min moderate w/ 6 x 30-sec sprints", tue: "Run 6.4 km moderate + 4 x 10-sec sprint", wed: "Bike 40 min moderate + 5 min comfortably hard", thu: "Run 6.4 km moderate", fri: "GYM", sat: "Bike 40.2 km moderate", sun: "Run 11.3 km moderate | Swim 1000 m moderate" },
+    { w: 3, mon: "Bike 40 min w/ 8 x 30-sec sprints", tue: "Run 6.4 km moderate + 6 x 10-sec sprint", wed: "Bike 40 min moderate + 8 min comfortably hard", thu: "Run 7.2 km moderate", fri: "GYM", sat: "Bike 48.3 km moderate", sun: "Run 12.9 km moderate | Swim 1200 m moderate" },
+    { w: 4, type: "Recovery", mon: "Bike 40 min w/ 6 x 30-sec sprints", tue: "Run 6.4 km moderate + 4 x 10-sec sprint", wed: "Bike 40 min moderate + 5 min comfortably hard", thu: "Run 6.4 km moderate", fri: "GYM", sat: "Bike 40.2 km moderate", sun: "Run 11.3 km moderate | Swim 1000 m moderate" },
+    { w: 5, mon: "Bike 45 min w/ 8 x 1-minute hard efforts", tue: "Run 7.2 km w/ 6 x 30-sec hard efforts", wed: "Bike 40 min moderate + 8 min comfortably hard", thu: "Run 7.2 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 56.3 km moderate + 10-minute transition run at moderate pace", sun: "Run 14.5 km moderate | Swim 1400 m moderate" },
+    { w: 6, mon: "Bike 45 min w/ 6 x 2-minute hard efforts", tue: "Run 7.2 km w/ 6 x 45-sec hard efforts", wed: "Bike 40 min moderate + 10 min comfortably hard", thu: "Run 7.2 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 64.4 km moderate", sun: "Run 16.1 km moderate | Swim 1600 m tot. Main set: 1000 meter time trial" },
+    { w: 7, mon: "Bike 45 min w/ 4 x 3-minute hard efforts", tue: "Run 7.2 km w/ 6 x 1-minute hard efforts", wed: "Bike 40 min moderate + 12 min comfortably hard", thu: "Run 8.0 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 72.4 km moderate + 15-minute transition run at moderate pace", sun: "Run 17.7 km moderate | Swim 1800 m moderate" },
+    { w: 8, type: "Recovery", mon: "Bike 40 min w/ 6 x 1-minute hard efforts", tue: "Run 7.2 km w/ 6 x 30-sec hard efforts", wed: "Bike 40 min moderate + 8 min comfortably hard", thu: "Run 6.4 km moderate", fri: "GYM", sat: "Bike 56.3 km moderate", sun: "Run 14.5 km moderate | Swim 1400 m moderate" },
+    { w: 9, mon: "Bike 50 min w/ 6 x 2-minute hard efforts", tue: "Run 1.6 km easy, 8 x 600m at 5K race pace w/ 400m jog recoveries, 1.6 km easy", wed: "Bike 40 min moderate + 15 min comfortably hard", thu: "Run 8.0 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 80.5 km moderate + 20-minute transition run at moderate pace", sun: "Run 19.3 km moderate | Swim 2000 m moderate" },
+    { w: 10, type: "Europapark", mon: "Bike 50 min w/ 5 x 3-minute hard efforts", tue: "Run 1.6 km easy, 6 x 800m at 5K race pace w/ 400m jog recoveries, 1.6 km easy", wed: "Bike Grenoble --> Marianne", thu: "Run 8.9 km moderate + 4 x 10-sec sprint", fri: "", sat: "", sun: "Run 20.9 km moderate | Swim 2000 m tot" },
+    { w: 11, mon: "Bike 55 min w/ 4 x 4-minute hard efforts", tue: "Run 1.6 km easy, 5 x 1000m at 5K race pace w/ 400m jog recoveries, 1.6 km easy", wed: "Bike 40 min moderate + 20 min comfortably hard", thu: "Run 9.7 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 96.6 km moderate + 10-minute transition run at race pace", sun: "Run 22.5 km moderate | Swim 2200 m moderate" },
+    { w: 12, type: "Recovery", mon: "Bike 45 min w/ 5 x 2-minute hard efforts", tue: "Run 3.2 km easy, 1.6 km at 10K race pace, 3.2 km easy", wed: "Bike 40 min moderate + 10 min comfortably hard", thu: "Run 8.0 km moderate", fri: "GYM", sat: "Bike 72.4 km moderate", sun: "Run 16.1 km moderate | Swim 2000 m moderate" },
+    { w: 13, mon: "Bike 20 min easy, 20 min comfortably hard, 20 min easy", tue: "Run 3.2 km easy, 3.2 km at 10K race pace, 3.2 km easy", wed: "Bike 45 min w/ 5 x 2-minute hard efforts", thu: "Run 9.7 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 80.5 km moderate + 16.1 km race pace + 15-minute transition run at race pace", sun: "Run 16.1 km moderate + 3.2 km race pace | Swim 2200 m tot" },
+    { w: 14, mon: "Bike 20 min easy, 25 min comfortably hard, 15 min easy", tue: "Run 3.2 km easy, 4.8 km at 10K race pace, 3.2 km easy", wed: "Bike 45 min w/ 4 x 3-minute hard efforts", thu: "Run 9.7 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 72.4 km moderate + 24.1 km race pace + 20-minute transition run at race pace", sun: "Run 19.3 km moderate + 3.2 km race pace | Swim 2400 m tot" },
+    { w: 15, mon: "Bike 15 min easy, 30 min comfortably hard, 15 min easy", tue: "Run 3.2 km easy, 4.8 km at 10K race pace, 3.2 km easy", wed: "Bike 45 min w/ 8 x 1-minute hard efforts", thu: "Run 7.2 km moderate + 4 x 10-sec sprint", fri: "GYM", sat: "Bike 64.4 km moderate + 16.1 km race pace + 10-minute transition run at race pace", sun: "Run 19.3 km race pace (beat last week) | Swim 2400 m tot" },
+    { w: 16, mon: "Bike 10 min easy, 10 min comfortably hard, 10 min easy", tue: "Run 3.2 km easy, 1.6 km at 10K race pace, 3.2 km easy", wed: "Bike 45 min w/ 5 x 30-sec sprints", thu: "Run 4.8 km easy", fri: "GYM", sat: "Swim 10 min easy... | Bike 10 min... | Run 10 min...", sun: "RACE!" }
+];
+
+let appState = {};
+try {
+    appState = JSON.parse(localStorage.getItem('ironman_db_final_v2') || '{}');
+} catch (e) {
+    console.error("Erreur lecture sauvegarde", e);
+    appState = {};
+}
+
+function parsePlan(text, type) {
+    if (!text) return 0;
+    const lower = text.toLowerCase();
+    
+    if (lower.includes('|')) {
+        const parts = lower.split('|');
+        const segment = parts.find(p => p.includes(type));
+        if (segment) return parsePlan(segment, type);
+        return 0;
+    }
+    if (lower.includes('grenoble') && lower.includes('marianne')) return 75;
+
+    let totalVal = 0;
+    const isBrick = lower.includes('transition');
+
+    if (type === 'run') {
+        if (isBrick) {
+            const transMatch = lower.match(/(\d+)[-\s]minute transition/);
+            if (transMatch) totalVal += (parseInt(transMatch[1]) / 60) * SPEEDS.run;
+            const explicitRunMatches = [...lower.matchAll(/run\s+(\d+[.,]?\d*)\s*km/g)];
+            explicitRunMatches.forEach(m => totalVal += parseFloat(m[1]));
+            if(totalVal > 0) return totalVal;
+        }
+    }
+
+    if (type === 'run' && (lower.includes('x') || lower.includes('w/'))) {
+        const matchMeters = [...lower.matchAll(/(\d+)\s*x\s*(\d+)\s*m/g)];
+        for (const m of matchMeters) {
+            const reps = parseInt(m[1]);
+            const distM = parseInt(m[2]);
+            let recupKm = 0;
+            if (lower.includes('400m jog') || lower.includes('400m recovery')) recupKm = 0.4;
+            else if (lower.includes('200m jog')) recupKm = 0.2;
+            totalVal += reps * ((distM / 1000) + recupKm);
+        }
+    }
+
+    const kmMatches = [...lower.matchAll(/(\d+[.,]?\d*)\s*km/g)];
+    for (const m of kmMatches) {
+        if (type === 'run' && isBrick) continue; 
+        totalVal += parseFloat(m[1]);
+    }
+
+    if (totalVal === 0 || (type === 'run' && !lower.includes('km'))) {
+        const timeMatches = [...lower.matchAll(/(\d+)\s*min/g)];
+        let minSum = 0;
+        if (lower.includes('w/')) {
+             if(timeMatches.length > 0) minSum = parseInt(timeMatches[0][1]);
+        } else {
+             for (const m of timeMatches) {
+                if (type === 'bike' && lower.substring(m.index, m.index+30).includes('transition')) continue;
+                minSum += parseInt(m[1]);
+             }
+        }
+        totalVal += (minSum / 60) * SPEEDS[type];
+    }
+    return parseFloat(totalVal.toFixed(2));
+}
+
+function analyzeSession(text) {
+    if(!text) return { type: 'rest' };
+    const lower = text.toLowerCase();
+    if(lower.includes('race!')) return { type: 'race' };
+    if(lower.includes('gym')) return { type: 'gym', isGym:true };
+    const hasBike = lower.includes('bike') || lower.includes('grenoble');
+    const hasRun = lower.includes('run');
+    let type = 'other';
+    if(hasBike && hasRun) type = 'brick';
+    else if(hasBike) type = 'bike';
+    else if(hasRun) type = 'run';
+    return { type, hasBike, hasRun };
+}
+
+function generateData() {
+    const weeks = [];
+    const specificStart = new Date(RACE_DATE);
+    specificStart.setDate(specificStart.getDate() - (16 * 7) + 1);
+    const baseWeeksCount = 8;
+    const totalWeeks = 16 + baseWeeksCount;
+    const startDate = new Date(specificStart);
+    startDate.setDate(startDate.getDate() - (baseWeeksCount * 7));
+
+    let current = new Date(startDate);
+    for(let i=0; i<totalWeeks; i++) {
+        const isBase = i < baseWeeksCount;
+        const raw = isBase ? rawPlan[i % 3] : rawPlan[i - baseWeeksCount];
+        const days = [];
+        const keys = ['mon','tue','wed','thu','fri','sat','sun'];
+        for(let d=0; d<7; d++) {
+            const date = new Date(current);
+            date.setDate(current.getDate() + d);
+            const key = date.toISOString().split('T')[0];
+            const content = raw ? raw[keys[d]] : "";
+            const analysis = analyzeSession(content);
+            const planBike = analysis.hasBike ? parsePlan(content, 'bike') : 0;
+            const planRun = analysis.hasRun ? parsePlan(content, 'run') : 0;
+            const stored = appState[key] || { done: false, realBike: planBike, realRun: planRun };
+            days.push({
+                date, key, content, analysis, planBike, planRun,
+                done: stored.done,
+                realBike: stored.done ? stored.realBike : 0,
+                userBike: stored.realBike,
+                realRun: stored.done ? stored.realRun : 0,
+                userRun: stored.realRun
+            });
+        }
+        weeks.push({ label: isBase ? `S${i+1}` : `S${i - baseWeeksCount + 1}`, days, type: raw?.type });
+        current.setDate(current.getDate() + 7);
+    }
+    return weeks;
+}
+
+function render() {
+    try {
+        const data = generateData();
+        const list = document.getElementById('calendar-root');
+        list.innerHTML = '';
+        
+        const chartData = [];
+        let tot = { pb:0, pr:0, rb:0, rr:0 };
+
+        data.forEach(week => {
+            let wStats = { pb:0, pr:0, rb:0, rr:0, label: week.label };
+            week.days.forEach(d => {
+                wStats.pb += d.planBike; wStats.pr += d.planRun;
+                wStats.rb += d.realBike; wStats.rr += d.realRun;
+            });
+            tot.pb += wStats.pb; tot.pr += wStats.pr; tot.rb += wStats.rb; tot.rr += wStats.rr;
+            chartData.push(wStats);
+
+            const wDiv = document.createElement('div');
+            wDiv.className = 'week-card';
+            wDiv.innerHTML = `<div class="week-header"><span class="week-title">${week.label}</span>${week.type ? `<span class="week-tag">${week.type}</span>` : ''}</div><div class="days-list"></div>`;
+            const dGrid = wDiv.querySelector('.days-list');
+            
+            week.days.forEach(d => {
+                if(!d.content && !d.analysis.isGym) return;
+                const el = document.createElement('div');
+                el.className = `day-card ${d.done ? 'done' : ''}`;
+                if(d.analysis.type === 'race') el.classList.add('type-race');
+                
+                const dateStr = d.date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+                
+                let badges = '';
+                if(d.analysis.type !== 'rest') {
+                    badges = `<div class="session-badges"><span class="session-type type-${d.analysis.type}">${d.analysis.type.toUpperCase()}</span></div>`;
+                }
+
+                let inputsHtml = '';
+                if(d.analysis.hasBike || d.analysis.hasRun) {
+                    inputsHtml += `<div class="real-inputs">`;
+                    if(d.analysis.hasBike) inputsHtml += `<div class="input-group"><span>Vélo</span><input type="number" step="1" inputmode="decimal" value="${Math.round(d.userBike)}" onclick="event.stopPropagation()" onchange="updateVal('${d.key}', 'realBike', this.value)"></div>`;
+                    if(d.analysis.hasRun) inputsHtml += `<div class="input-group"><span>Run</span><input type="number" step="1" inputmode="decimal" value="${Math.round(d.userRun)}" onclick="event.stopPropagation()" onchange="updateVal('${d.key}', 'realRun', this.value)"></div>`;
+                    inputsHtml += `</div>`;
+                }
+
+                el.innerHTML = `
+                    <div class="day-info">
+                        <div class="day-date">${dateStr}</div>
+                        ${badges}
+                        <div class="session-text">${d.content || 'Repos'}</div>
+                    </div>
+                    <div class="day-actions">
+                        <div class="check-circle" onclick="toggle('${d.key}')">
+                            ${d.done ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+                        </div>
+                        ${inputsHtml}
+                    </div>
+                `;
+                dGrid.appendChild(el);
+            });
+            list.appendChild(wDiv);
+        });
+
+        document.getElementById('kpi-bike-plan').innerText = Math.round(tot.pb);
+        document.getElementById('kpi-run-plan').innerText = Math.round(tot.pr);
+        document.getElementById('kpi-bike-real').innerText = Math.round(tot.rb);
+        document.getElementById('kpi-run-real').innerText = Math.round(tot.rr);
+
+        renderAreaChart(chartData, 'chart-bike', 'pb', 'rb', 'area-real-bike');
+        renderAreaChart(chartData, 'chart-run', 'pr', 'rr', 'area-real-run');
+
+        // CACHE L'ÉCRAN DE CHARGEMENT SI TOUT EST OK
+        const loader = document.getElementById('loading-screen');
+        if(loader) loader.style.display = 'none';
+
+    } catch (err) {
+        console.error(err);
+        alert("Erreur de rendu : " + err.message);
+    }
+}
+
+function renderAreaChart(data, elId, keyPlan, keyReal, classReal) {
+    const div = document.getElementById(elId);
+    if(!div) return;
+    div.innerHTML = '';
+    const w = div.clientWidth || 300;
+    const h = div.clientHeight || 50;
+
+    const maxVal = Math.max(...data.map(d => Math.max(d[keyPlan], d[keyReal]))) * 1.1 || 10;
+    const step = w / (data.length - 1);
+    
+    function makePath(key) {
+        let d = `M 0,${h} `;
+        data.forEach((pt, i) => {
+            const x = i * step;
+            const y = h - (pt[key] / maxVal * h);
+            d += `L ${x},${y} `;
+        });
+        d += `L ${w},${h} Z`;
+        return d;
+    }
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+
+    const pathPlan = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathPlan.setAttribute("d", makePath(keyPlan));
+    pathPlan.setAttribute("class", "area-plan");
+
+    const pathReal = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathReal.setAttribute("d", makePath(keyReal));
+    pathReal.setAttribute("class", classReal);
+
+    svg.appendChild(pathPlan);
+    svg.appendChild(pathReal);
+    div.appendChild(svg);
+}
+
+window.toggle = function(key) {
+    const cur = appState[key] || {};
+    if(cur.realBike === undefined) {
+         const gen = generateData();
+         let found; for(let w of gen) { found = w.days.find(x => x.key === key); if(found) break; }
+         if(found) {
+            cur.realBike = found.planBike; cur.realRun = found.planRun;
+         }
+    }
+    appState[key] = { ...cur, done: !cur.done };
+    localStorage.setItem('ironman_db_final_v2', JSON.stringify(appState));
+    render();
+}
+window.updateVal = function(key, type, val) {
+    const cur = appState[key] || {};
+    appState[key] = { ...cur, [type]: parseFloat(val) };
+    localStorage.setItem('ironman_db_final_v2', JSON.stringify(appState));
+    render();
+}
+
+setTimeout(render, 100); 
+window.addEventListener('resize', render);
+</script>
+</body>
+</html>
